@@ -89,7 +89,7 @@
 
     // ===== Backend Integration =====
     const songSelect = document.getElementById('songSelect');
-    const backendURL = 'http://localhost:3000'; // adjust if deployed
+    const backendURL = 'http://127.0.0.1:5000'; // adjust if deployed
 
     async function loadSongs() {
       const res = await fetch(`${backendURL}/api/songs`);

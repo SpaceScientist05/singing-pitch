@@ -15,23 +15,18 @@
   <h1>🎵 Real-Time Pitch Detection App</h1>
 
   <div id="controls">
+    <!--
     <div>
       <label for="songSelect">Choose a song:</label>
       <select id="songSelect">
         <option value="">-- Select --</option>
       </select>
     </div>
+    <canvas id="pitchCanvas" width="800" height="300"></canvas>
+    -->
     <div id="freq">Frequency: -- Hz</div>
     <div id="note">Note: --</div>
-    <canvas id="pitchCanvas" width="800" height="300"></canvas>
   </div>
-
-  <audio controls>
-  <source src="http://127.0.0.1:5000/api/songs/<song_id>/mp3" type="audio/mpeg">
-  Your browser does not support the audio element.
-  </audio>
-
-  <a class="nav-link" href="/upload">Upload Songs</a>
 
   <script src="https://cdn.jsdelivr.net/npm/pitchfinder@1.3.0/dist/pitchfinder.min.js"></script>
   <script src="script.js"></script>

@@ -1,3 +1,70 @@
+// Use an import statement to bring in the library
+import * as PitchFinder from 'pitchfinder';
+
+// This is the main part of your application.
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const startButton = document.getElementById('startButton');
+const pitchDisplay = document.getElementById('pitchDisplay');
+const statusMessage = document.querySelector('.status');
+
+let micSource;
+let scriptNode;
+let pitchFinderInstance;
+
+startButton.addEventListener('click', async () => {
+    if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+    }
+
+    try {
+        // Get microphone access from the user
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // Create a source node from the microphone stream
+        micSource = audioContext.createMediaStreamSource(stream);
+
+        // Create a ScriptProcessorNode to process the audio
+        const bufferSize = 8192; // Number of samples to process at a time
+        scriptNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
+        micSource.connect(scriptNode);
+
+        // Connect the processor node to the audio context (required)
+        scriptNode.connect(audioContext.destination);
+
+
+        // Initialize the pitch finder
+        const pitchFinderInstance = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
+
+        // Define what happens when the processor node gets new audio data
+        scriptNode.onaudioprocess = (audioEvent) => {
+            // Get the audio data from the first channel
+            const inputBuffer = audioEvent.inputBuffer.getChannelData(0);
+
+            // Find the pitch in the audio data
+            const pitch = pitchFinderInstance(inputBuffer);
+
+            // Display the pitch if one was found
+            if (pitch) {
+                pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
+            } else {
+                pitchDisplay.textContent = 'No pitch detected';
+            }
+        };
+
+        // Update the UI
+        statusMessage.textContent = 'Listening...';
+        startButton.disabled = true;
+
+    } catch (err) {
+        console.error('Error accessing the microphone:', err);
+        statusMessage.textContent = 'Error: could not access microphone. Check your browser permissions.';
+    }
+});
+
+
+
+
+/*
 const handleSuccess = async function(stream) {
     const context = new AudioContext();
     const source = context.createMediaStreamSource(stream);
@@ -11,7 +78,7 @@ const handleSuccess = async function(stream) {
 
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       .then(handleSuccess);
-
+*/
 
 
 /*

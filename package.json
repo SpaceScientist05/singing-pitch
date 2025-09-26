@@ -1,5 +1,18 @@
 {
   "dependencies": {
     "pitchfinder": "^2.3.2"
-  }
+  },
+  "name": "singing-pitch",
+  "version": "1.0.0",
+  "main": "script.js",
+  "devDependencies": {
+    "parcel": "^2.16.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
 }

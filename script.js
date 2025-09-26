@@ -1,41 +1,45 @@
-function freqToNoteNumber(freq) {
-  return 69 + 12 * Math.log2(freq/440);
-}
-
-function noteClass(freq) {
-  const noteNumber = Math.round(freqToNoteNumber(freq));
-  return (noteNumber % 12 + 12) % 12;
-}
-
-function freqToNoteName(freq) {
-  const notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  const noteNumber = Math.round(freqToNoteNumber(freq));
-  const name = notes[(noteNumber % 12 + 12) % 12];
-  const octave = Math.floor(noteNumber/12 - 1);
-  return name + octave;
-}
-
 // ===== Pitch Detection =====
-navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-  const audioContext = new AudioContext();
-  const source = audioContext.createMediaStreamSource(stream);
-  const processor = audioContext.createScriptProcessor(1024, 1, 1);
+const audioContext = new window.AudioContext();
+const analyser = audioContext.createAnalyser();
 
-  const detectPitch = Pitchfinder.YIN({ sampleRate: audioContext.sampleRate });
+navigator.getUserMedia(
+  { audio: true },
+  stream => {
+    audioContext.createMediaStreamSource(stream).connect(analyser);
 
-  source.connect(processor);
-  processor.connect(audioContext.destination);
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-  const freqElem = document.getElementById('freq');
-  const noteElem = document.getElementById('note');
+    analyser.getByteTimeDomainData(dataArray);
 
-  processor.onaudioprocess = function(e) {
-    const input = e.inputBuffer.getChannelData(0);
-    const pitch = detectPitch(input);
+    // Log the contents of the analyzer ever 500ms. 
+    setInterval(() => {
+      console.log(dataArray.length);
+    }, 500);
+  },
+  err => console.log(err)
+);
 
-    if (pitch) {
-      freqElem.textContent = `Frequency: ${pitch.toFixed(2)} Hz`;
-      noteElem.textContent = `Note: ${freqToNoteName(pitch)}`;
+/*
+async function startMicrophoneAudio() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioContext = new AudioContext();
+        const microphoneSource = audioContext.createMediaStreamSource(stream);
+
+        // Connect the microphone to the speakers (destination)
+        microphoneSource.connect(audioContext.destination);
+
+        console.log('Microphone audio is now recording.');
+    } catch (error) {
+        console.error('Failed to start microphone audio:', error);
     }
-  };
-}).catch(err => console.error('Mic error:', err));
+}
+const processor = audioContext.createScriptProcessor(1024, 1, 1);
+const detectPitch = Pitchfinder.YIN({ sampleRate: audioContext.sampleRate });
+const frequencies = Pitchfinder.frequencies(detectPitch, float32Array, {
+    tempo: 130, // in BPM, defaults to 120
+    quantization: 4, // samples per beat, defaults to 4 (i.e. 16th notes)
+  });
+source.connect(processor);
+processor.connect(audioContext.destination)
+*/

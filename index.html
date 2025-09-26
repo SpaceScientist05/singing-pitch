@@ -106,7 +106,7 @@
 
 
                 // Initialize the pitch finder
-                pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
+                const pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
 
                 // Define what happens when the processor node gets new audio data
                 scriptNode.onaudioprocess = (audioEvent) => {

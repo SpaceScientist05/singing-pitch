@@ -95,18 +95,21 @@
                 micSource = audioContext.createMediaStreamSource(stream);
 
                 // Create a ScriptProcessorNode to process the audio
-                const bufferSize = 4096; // Number of samples to process at a time
+                const bufferSize = 8192; // Number of samples to process at a time
                 scriptNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
                 micSource.connect(scriptNode);
 
                 // Connect the processor node to the audio context (required)
                 scriptNode.connect(audioContext.destination);
+                micSource.connect(audioContext.destination);
+
 
                 // Initialize the pitch finder
                 const pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
 
                 // Define what happens when the processor node gets new audio data
                 scriptNode.onaudioprocess = (audioEvent) => {
+                    console.log("Audio is being processed!"); //test
                     // Get the audio data from the first channel
                     const inputBuffer = audioEvent.inputBuffer.getChannelData(0);
 

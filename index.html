@@ -28,15 +28,16 @@
             }
 
             try {
+                // Add the AudioWorklet module (local file)
+                // Await this line to ensure the module is fully registered.
+                await audioContext.audioWorklet.addModule('pitch-processor.js');
+
+                // Now, and only now, can you safely create the AudioWorkletNode.
+                const audioWorkletNode = new AudioWorkletNode(audioContext, 'pitch-processor');
+
                 // Get microphone access
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
-                // Add the AudioWorklet module (local file)
-                await audioContext.audioWorklet.addModule('pitch-processor.js');
-
-                // Create the AudioWorkletNode
-                const audioWorkletNode = new AudioWorkletNode(audioContext, 'pitch-processor');
-
                 // Connect the microphone stream to the AudioWorkletNode
                 const micSource = audioContext.createMediaStreamSource(stream);
                 micSource.connect(audioWorkletNode);

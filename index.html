@@ -12,11 +12,12 @@
   <link href="style.css" rel='stylesheet'>
 </head>
 <body>
-  <h1>🎵 Real-Time Pitch Detection App</h1>
-
-  <div id="controls">
-    <div id="freq">Frequency: -- Hz</div>
-    <div id="note">Note: --</div>
+  <h1>Frequency (Hz)</h1>
+  <h2 id="frequency">0.0</h2>
+  <div>
+      <button onclick="startPitchDetection()">
+          Start Pitch Detection
+      </button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/pitchfinder@1.3.0/dist/pitchfinder.min.js"></script>

@@ -1,16 +1,9 @@
 // pitch-processor.js
 
-// This is the entire pitchfinder library code,
-// copied from the correct UMD build.
-// This is the most reliable way to ensure it is available in the worklet's scope.
-// You do not need a separate pitchfinder.js file.
-(function (global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-    typeof define === 'function' && define.amd ? define(factory) :
-    (global = global || self, global.PitchFinder = factory());
-}(this, (function () { 'use strict';
-
-    var yin = (function () {
+// The actual pitchfinder library code, without the UMD wrapper.
+// This is the simplest way to get the code into the AudioWorklet's scope.
+var PitchFinder = {
+    YIN: (function () {
         var defaults = {
             sampleRate: 44100,
             threshold: 0.1,
@@ -40,25 +33,20 @@
             pitch = options.sampleRate / tau;
             return pitch;
         };
-    })();
-
-    var PitchFinder = { YIN: yin };
-    return PitchFinder;
-})));
+    })()
+};
 
 // Now, define your AudioWorkletProcessor class and use the PitchFinder library.
 class PitchProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
-        // Instantiate the pitch finder inside the worklet processor
         this.pitchFinder = new PitchFinder.YIN({ sampleRate: 44100 });
         this.samples = new Float32Array(0);
         this.lastMessageTime = 0;
     }
 
     process(inputs, outputs, parameters) {
-        // inputs[0] is the first input connection, [0] is the first channel
-        const inputChannel = inputs[0][0];
+        const inputChannel = inputs;
 
         if (inputChannel) {
             const newSamples = new Float32Array(this.samples.length + inputChannel.length);
@@ -66,12 +54,10 @@ class PitchProcessor extends AudioWorkletProcessor {
             newSamples.set(inputChannel, this.samples.length);
             this.samples = newSamples;
 
-            // Use a larger buffer for better pitch accuracy
             const bufferSize = 4096;
             if (this.samples.length >= bufferSize) {
                 const pitch = this.pitchFinder(this.samples.subarray(0, bufferSize));
                 
-                // Send a message back to the main thread with the pitch
                 const currentTime = Date.now();
                 if (currentTime - this.lastMessageTime > 100) {
                     this.port.postMessage(pitch);
@@ -85,70 +71,3 @@ class PitchProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor('pitch-processor', PitchProcessor);
-
-
-
-
-
-/*
-const handleSuccess = async function(stream) {
-    const context = new AudioContext();
-    const source = context.createMediaStreamSource(stream);
-
-    await context.audioWorklet.addModule("processor.js");
-    const worklet = new AudioWorkletNode(context, "worklet-processor");
-
-    source.connect(worklet);
-    worklet.connect(context.destination);
-  };
-
-  navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then(handleSuccess);
-*/
-
-
-/*
-// ===== Pitch Detection =====
-const audioContext = new window.AudioContext();
-const analyser = audioContext.createAnalyser();
-
-navigator.getUserMedia(
-  { audio: true },
-  stream => {
-    audioContext.createMediaStreamSource(stream).connect(analyser);
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    analyser.getByteTimeDomainData(dataArray);
-
-    // Log the contents of the analyzer ever 500ms. 
-    setInterval(() => {
-      console.log(dataArray.length);
-    }, 500);
-  },
-  err => console.log(err)
-);
-
-async function startMicrophoneAudio() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioContext = new AudioContext();
-        const microphoneSource = audioContext.createMediaStreamSource(stream);
-
-        // Connect the microphone to the speakers (destination)
-        microphoneSource.connect(audioContext.destination);
-
-        console.log('Microphone audio is now recording.');
-    } catch (error) {
-        console.error('Failed to start microphone audio:', error);
-    }
-}
-const processor = audioContext.createScriptProcessor(1024, 1, 1);
-const detectPitch = Pitchfinder.YIN({ sampleRate: audioContext.sampleRate });
-const frequencies = Pitchfinder.frequencies(detectPitch, float32Array, {
-    tempo: 130, // in BPM, defaults to 120
-    quantization: 4, // samples per beat, defaults to 4 (i.e. 16th notes)
-  });
-source.connect(processor);
-processor.connect(audioContext.destination)
-*/

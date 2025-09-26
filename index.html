@@ -81,6 +81,7 @@
 
         let micSource;
         let scriptNode;
+        let pitchFinder;
 
         startButton.addEventListener('click', async () => {
             if (audioContext.state === 'suspended') {
@@ -101,15 +102,14 @@
 
                 // Connect the processor node to the audio context (required)
                 scriptNode.connect(audioContext.destination);
-                micSource.connect(audioContext.destination);
+                micSource.connect(audioContext.destination); //test
 
 
                 // Initialize the pitch finder
-                const pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
+                pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
 
                 // Define what happens when the processor node gets new audio data
                 scriptNode.onaudioprocess = (audioEvent) => {
-                    console.log("Audio is being processed!"); //test
                     // Get the audio data from the first channel
                     const inputBuffer = audioEvent.inputBuffer.getChannelData(0);
 

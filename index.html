@@ -18,6 +18,8 @@
     <p id="pitchDisplay">--</p>
 
     <script>
+        import * as Pitchfinder from "pitchfinder";
+
         // This is the main part of your application.
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const startButton = document.getElementById('startButton');

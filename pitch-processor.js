@@ -1,13 +1,13 @@
 // pitch-processor.js
 
 // The actual pitchfinder library code, without the UMD wrapper.
-// This is the simplest way to get the code into the AudioWorklet's scope.
 var PitchFinder = {
     YIN: (function () {
         var defaults = {
             sampleRate: 44100,
             threshold: 0.1,
         };
+        // The YIN method returns the detection function directly
         return function (audioBuffer, options) {
             options = Object.assign({}, defaults, options);
             var tau, t, i, j, period,
@@ -40,13 +40,14 @@ var PitchFinder = {
 class PitchProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
-        this.pitchFinder = new PitchFinder.YIN({ sampleRate: 44100 });
+        // Correctly instantiate the pitch finder by calling it as a function
+        this.pitchFinder = PitchFinder.YIN({ sampleRate: 44100 });
         this.samples = new Float32Array(0);
         this.lastMessageTime = 0;
     }
 
     process(inputs, outputs, parameters) {
-        const inputChannel = inputs;
+        const inputChannel = inputs[0]; // Access the first channel of the first input
 
         if (inputChannel) {
             const newSamples = new Float32Array(this.samples.length + inputChannel.length);
@@ -56,6 +57,7 @@ class PitchProcessor extends AudioWorkletProcessor {
 
             const bufferSize = 4096;
             if (this.samples.length >= bufferSize) {
+                // Call the pitchFinder function instance
                 const pitch = this.pitchFinder(this.samples.subarray(0, bufferSize));
                 
                 const currentTime = Date.now();

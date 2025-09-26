@@ -1,75 +1,130 @@
 // pitch-processor.js
 
-// The actual pitchfinder library code, without the UMD wrapper.
-var PitchFinder = {
-    YIN: (function () {
-        var defaults = {
-            sampleRate: 44100,
-            threshold: 0.1,
-        };
-        // The YIN method returns the detection function directly
-        return function (audioBuffer, options) {
-            options = Object.assign({}, defaults, options);
-            var tau, t, i, j, period,
-                size = audioBuffer.length,
-                yinBuffer = new Float32Array(Math.floor(size / 2)),
-                delta = 0,
-                pitch;
-            for (t = 0; t < yinBuffer.length; t++) { yinBuffer[t] = 0; }
-            for (t = 1; t < yinBuffer.length; t++) {
-                for (i = 0; i < size - t; i++) {
-                    delta += (audioBuffer[i] - audioBuffer[i + t]) * (audioBuffer[i] - audioBuffer[i + t]);
-                }
-                yinBuffer[t] = delta;
-                delta = 0;
-            }
-            yinBuffer = 1;
-            t = 1;
-            while (t < yinBuffer.length && yinBuffer[t] < options.threshold) { t++; }
-            if (t === yinBuffer.length) { return null; }
-            i = t + 1;
-            while (i < yinBuffer.length && yinBuffer[i] < yinBuffer[t]) { i++; }
-            tau = t + ((yinBuffer[t] - yinBuffer[i]) / (2 * (yinBuffer[t] - yinBuffer[i]) + yinBuffer[i]));
-            pitch = options.sampleRate / tau;
-            return pitch;
-        };
-    })()
+// Simple, correct YIN detector factory for use inside an AudioWorklet
+const PitchFinder = {
+  // Call PitchFinder.YIN({ sampleRate, threshold }) to get a detector function(audioBuffer)
+  YIN: function (opts = {}) {
+    const defaults = {
+      sampleRate: (typeof sampleRate !== 'undefined') ? sampleRate : 44100,
+      threshold: 0.10
+    };
+    const options = Object.assign({}, defaults, opts);
+
+    function parabolicInterpolation(buffer, tau) {
+      const x0 = (tau <= 0) ? tau : tau - 1;
+      const x2 = (tau + 1 < buffer.length) ? tau + 1 : tau;
+      const s0 = buffer[x0], s1 = buffer[tau], s2 = buffer[x2];
+      const denom = (s0 + s2 - 2 * s1);
+      if (denom === 0) return tau;
+      return tau + (s0 - s2) / (2 * denom);
+    }
+
+    return function detect(audioBuffer) {
+      const bufferSize = audioBuffer.length;
+      if (bufferSize < 2) return null;
+
+      const halfBuffer = Math.floor(bufferSize / 2);
+      const yin = new Float32Array(halfBuffer);
+
+      // 1) Difference function
+      for (let tau = 0; tau < halfBuffer; tau++) {
+        let sum = 0;
+        for (let i = 0; i < bufferSize - tau; i++) {
+          const diff = audioBuffer[i] - audioBuffer[i + tau];
+          sum += diff * diff;
+        }
+        yin[tau] = sum;
+      }
+
+      // 2) Cumulative mean normalized difference function (CMNDF)
+      yin[0] = 1;
+      let runningSum = 0;
+      for (let tau = 1; tau < halfBuffer; tau++) {
+        runningSum += yin[tau];
+        // avoid division by zero - runningSum should be > 0
+        yin[tau] = (runningSum === 0) ? 1 : (yin[tau] * tau / runningSum);
+      }
+
+      // 3) Absolute threshold: find first dip below threshold
+      let tauEstimate = -1;
+      for (let tau = 1; tau < halfBuffer; tau++) {
+        if (yin[tau] < options.threshold) {
+          // refine to local minimum
+          while (tau + 1 < halfBuffer && yin[tau + 1] < yin[tau]) tau++;
+          tauEstimate = tau;
+          break;
+        }
+      }
+
+      if (tauEstimate === -1) return null;
+
+      // 4) Parabolic interpolation to improve precision
+      const betterTau = parabolicInterpolation(yin, tauEstimate);
+      if (!betterTau || betterTau === 0) return null;
+
+      const pitch = options.sampleRate / betterTau;
+      return pitch;
+    };
+  }
 };
 
-// Now, define your AudioWorkletProcessor class and use the PitchFinder library.
+
 class PitchProcessor extends AudioWorkletProcessor {
-    constructor() {
-        super();
-        // Correctly instantiate the pitch finder by calling it as a function
-        this.pitchFinder = PitchFinder.YIN({ sampleRate: 44100 });
-        this.samples = new Float32Array(0);
-        this.lastMessageTime = 0;
+  constructor() {
+    super();
+
+    // choose processing buffer size for detection (2048 or 4096 often used)
+    this._frameSize = 2048;
+    this._buffer = new Float32Array(0);
+
+    // Create a detector instance using the worklet's sampleRate
+    this._detector = PitchFinder.YIN({ sampleRate: sampleRate, threshold: 0.12 });
+
+    // throttle messaging to the main thread (ms)
+    this._throttleMs = 80;
+    this._lastPost = 0;
+  }
+
+  process(inputs) {
+    // inputs: array of inputs; each input is array of channels
+    const input = inputs[0];
+    if (!input || !input[0]) {
+      // no data
+      return true;
     }
 
-    process(inputs, outputs, parameters) {
-        const inputChannel = inputs[0]; // Access the first channel of the first input
+    const channelData = input[0]; // Float32Array
+    // append to our internal buffer
+    const newBuf = new Float32Array(this._buffer.length + channelData.length);
+    newBuf.set(this._buffer, 0);
+    newBuf.set(channelData, this._buffer.length);
+    this._buffer = newBuf;
 
-        if (inputChannel) {
-            const newSamples = new Float32Array(this.samples.length + inputChannel.length);
-            newSamples.set(this.samples);
-            newSamples.set(inputChannel, this.samples.length);
-            this.samples = newSamples;
+    // while we have enough samples, analyse in chunks
+    while (this._buffer.length >= this._frameSize) {
+      const segment = this._buffer.subarray(0, this._frameSize);
 
-            const bufferSize = 4096;
-            if (this.samples.length >= bufferSize) {
-                // Call the pitchFinder function instance
-                const pitch = this.pitchFinder(this.samples.subarray(0, bufferSize));
-                
-                const currentTime = Date.now();
-                if (currentTime - this.lastMessageTime > 100) {
-                    this.port.postMessage(pitch);
-                    this.lastMessageTime = currentTime;
-                }
-                this.samples = this.samples.subarray(bufferSize);
-            }
-        }
-        return true;
+      // run detector
+      let pitch = null;
+      try {
+        pitch = this._detector(segment);
+      } catch (e) {
+        // detector error -> return no pitch for this frame
+        pitch = null;
+      }
+
+      const now = Date.now();
+      if (now - this._lastPost > this._throttleMs) {
+        this.port.postMessage(pitch); // number or null
+        this._lastPost = now;
+      }
+
+      // drop processed samples
+      this._buffer = this._buffer.subarray(this._frameSize);
     }
+
+    return true;
+  }
 }
 
 registerProcessor('pitch-processor', PitchProcessor);

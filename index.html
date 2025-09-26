@@ -2,24 +2,71 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Easy Pitch Detector</title>
+    <title>Pitch Detector with AudioWorklet</title>
     <style>
         body { font-family: sans-serif; text-align: center; margin-top: 50px; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
         #pitchDisplay { font-size: 2em; margin-top: 20px; }
         .status { color: gray; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/pitchfinder@2.3.2/lib/index.min.js"></script>
 </head>
 <body>
-    <h1>Easy Pitch Detector</h1>
+    <h1>Real-time Pitch Detector</h1>
     <button id="startButton">Start Microphone</button>
-    <p class="status">Click the button to begin. You will be asked for microphone permission.</p>
+    <p class="status">Waiting for microphone...</p>
     <p id="pitchDisplay">--</p>
 
-    <script type="module" src="script.js"></script>
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const startButton = document.getElementById('startButton');
+        const pitchDisplay = document.getElementById('pitchDisplay');
+        const statusMessage = document.querySelector('.status');
+
+        startButton.addEventListener('click', async () => {
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            try {
+                // Get microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Add the AudioWorklet module (local file)
+                await audioContext.audioWorklet.addModule('pitch-processor.js');
+
+                // Create the AudioWorkletNode
+                const audioWorkletNode = new AudioWorkletNode(audioContext, 'pitch-processor');
+
+                // Connect the microphone stream to the AudioWorkletNode
+                const micSource = audioContext.createMediaStreamSource(stream);
+                micSource.connect(audioWorkletNode);
+
+                // Listen for messages from the AudioWorkletProcessor
+                audioWorkletNode.port.onmessage = (event) => {
+                    const pitch = event.data;
+                    if (pitch) {
+                        pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
+                    } else {
+                        pitchDisplay.textContent = 'No pitch detected';
+                    }
+                };
+
+                // It's a good practice to connect the worklet to the destination,
+                // even if you don't intend to play the output.
+                audioWorkletNode.connect(audioContext.destination);
+
+                statusMessage.textContent = 'Listening...';
+                startButton.disabled = true;
+
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                statusMessage.textContent = 'Error: could not access microphone. Check your browser permissions.';
+            }
+        });
+    </script>
 </body>
 </html>
+
 
 
 <!--

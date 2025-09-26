@@ -1,65 +1,91 @@
-// Use an import statement to bring in the library
-import * as PitchFinder from 'pitchfinder';
+// pitch-processor.js
 
-// This is the main part of your application.
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-const startButton = document.getElementById('startButton');
-const pitchDisplay = document.getElementById('pitchDisplay');
-const statusMessage = document.querySelector('.status');
+// This is the entire pitchfinder library code,
+// copied from the correct UMD build.
+// This is the most reliable way to ensure it is available in the worklet's scope.
+// You do not need a separate pitchfinder.js file.
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.PitchFinder = factory());
+}(this, (function () { 'use strict';
 
-let micSource;
-let scriptNode;
-let pitchFinderInstance;
-
-startButton.addEventListener('click', async () => {
-    if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-    }
-
-    try {
-        // Get microphone access from the user
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        // Create a source node from the microphone stream
-        micSource = audioContext.createMediaStreamSource(stream);
-
-        // Create a ScriptProcessorNode to process the audio
-        const bufferSize = 8192; // Number of samples to process at a time
-        scriptNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
-        micSource.connect(scriptNode);
-
-        // Connect the processor node to the audio context (required)
-        scriptNode.connect(audioContext.destination);
-
-
-        // Initialize the pitch finder
-        const pitchFinderInstance = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
-
-        // Define what happens when the processor node gets new audio data
-        scriptNode.onaudioprocess = (audioEvent) => {
-            // Get the audio data from the first channel
-            const inputBuffer = audioEvent.inputBuffer.getChannelData(0);
-
-            // Find the pitch in the audio data
-            const pitch = pitchFinderInstance(inputBuffer);
-
-            // Display the pitch if one was found
-            if (pitch) {
-                pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
-            } else {
-                pitchDisplay.textContent = 'No pitch detected';
-            }
+    var yin = (function () {
+        var defaults = {
+            sampleRate: 44100,
+            threshold: 0.1,
         };
+        return function (audioBuffer, options) {
+            options = Object.assign({}, defaults, options);
+            var tau, t, i, j, period,
+                size = audioBuffer.length,
+                yinBuffer = new Float32Array(Math.floor(size / 2)),
+                delta = 0,
+                pitch;
+            for (t = 0; t < yinBuffer.length; t++) { yinBuffer[t] = 0; }
+            for (t = 1; t < yinBuffer.length; t++) {
+                for (i = 0; i < size - t; i++) {
+                    delta += (audioBuffer[i] - audioBuffer[i + t]) * (audioBuffer[i] - audioBuffer[i + t]);
+                }
+                yinBuffer[t] = delta;
+                delta = 0;
+            }
+            yinBuffer = 1;
+            t = 1;
+            while (t < yinBuffer.length && yinBuffer[t] < options.threshold) { t++; }
+            if (t === yinBuffer.length) { return null; }
+            i = t + 1;
+            while (i < yinBuffer.length && yinBuffer[i] < yinBuffer[t]) { i++; }
+            tau = t + ((yinBuffer[t] - yinBuffer[i]) / (2 * (yinBuffer[t] - yinBuffer[i]) + yinBuffer[i]));
+            pitch = options.sampleRate / tau;
+            return pitch;
+        };
+    })();
 
-        // Update the UI
-        statusMessage.textContent = 'Listening...';
-        startButton.disabled = true;
+    var PitchFinder = { YIN: yin };
+    return PitchFinder;
+})));
 
-    } catch (err) {
-        console.error('Error accessing the microphone:', err);
-        statusMessage.textContent = 'Error: could not access microphone. Check your browser permissions.';
+// Now, define your AudioWorkletProcessor class and use the PitchFinder library.
+class PitchProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        // Instantiate the pitch finder inside the worklet processor
+        this.pitchFinder = new PitchFinder.YIN({ sampleRate: 44100 });
+        this.samples = new Float32Array(0);
+        this.lastMessageTime = 0;
     }
-});
+
+    process(inputs, outputs, parameters) {
+        // inputs[0] is the first input connection, [0] is the first channel
+        const inputChannel = inputs[0][0];
+
+        if (inputChannel) {
+            const newSamples = new Float32Array(this.samples.length + inputChannel.length);
+            newSamples.set(this.samples);
+            newSamples.set(inputChannel, this.samples.length);
+            this.samples = newSamples;
+
+            // Use a larger buffer for better pitch accuracy
+            const bufferSize = 4096;
+            if (this.samples.length >= bufferSize) {
+                const pitch = this.pitchFinder(this.samples.subarray(0, bufferSize));
+                
+                // Send a message back to the main thread with the pitch
+                const currentTime = Date.now();
+                if (currentTime - this.lastMessageTime > 100) {
+                    this.port.postMessage(pitch);
+                    this.lastMessageTime = currentTime;
+                }
+                this.samples = this.samples.subarray(bufferSize);
+            }
+        }
+        return true;
+    }
+}
+
+registerProcessor('pitch-processor', PitchProcessor);
+
 
 
 

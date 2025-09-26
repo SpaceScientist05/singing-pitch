@@ -1,12 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <title>Easy Pitch Detector</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #pitchDisplay { font-size: 2em; margin-top: 20px; }
+        .status { color: gray; }
+    </style>
+</head>
+<body>
+    <h1>Easy Pitch Detector</h1>
+    <button id="startButton">Start Microphone</button>
+    <p class="status">Click the button to begin. You will be asked for microphone permission.</p>
+    <p id="pitchDisplay">--</p>
+
+    <script>
+        // --- STEP 1: INCLUDE PITCHFINDER.JS LIBRARY ---
+        // This is the core logic for finding the pitch.
+        // It is copied and pasted here for simplicity.
+        (function (global, factory) {
+            typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+            typeof define === 'function' && define.amd ? define(factory) :
+            (global = global || self, global.PitchFinder = factory());
+        }(this, (function () { 'use strict';
+
+            var yin = (function () {
+                var defaults = {
+                    sampleRate: 44100,
+                    threshold: 0.1,
+                };
+                return function (audioBuffer, options) {
+                    options = Object.assign({}, defaults, options);
+                    var tau, t, i, j, period,
+                        size = audioBuffer.length,
+                        yinBuffer = new Float32Array(Math.floor(size / 2)),
+                        delta = 0,
+                        pitch;
+                    for (t = 0; t < yinBuffer.length; t++) {
+                        yinBuffer[t] = 0;
+                    }
+                    for (t = 1; t < yinBuffer.length; t++) {
+                        for (i = 0; i < size - t; i++) {
+                            delta += (audioBuffer[i] - audioBuffer[i + t]) * (audioBuffer[i] - audioBuffer[i + t]);
+                        }
+                        yinBuffer[t] = delta;
+                        delta = 0;
+                    }
+                    yinBuffer[0] = 1;
+                    t = 1;
+                    while (t < yinBuffer.length && yinBuffer[t] < options.threshold) {
+                        t++;
+                    }
+                    if (t === yinBuffer.length) {
+                        return null;
+                    }
+                    i = t + 1;
+                    while (i < yinBuffer.length && yinBuffer[i] < yinBuffer[t]) {
+                        i++;
+                    }
+                    tau = t + ((yinBuffer[t] - yinBuffer[i]) / (2 * (yinBuffer[t] - yinBuffer[i]) + yinBuffer[i]));
+                    pitch = options.sampleRate / tau;
+                    return pitch;
+                };
+            })();
+
+            var PitchFinder = {
+                YIN: yin
+            };
+            return PitchFinder;
+        })));
+
+        // --- STEP 2: SET UP THE MAIN APPLICATION LOGIC ---
+        // This is the main part of your application.
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const startButton = document.getElementById('startButton');
+        const pitchDisplay = document.getElementById('pitchDisplay');
+        const statusMessage = document.querySelector('.status');
+
+        let micSource;
+        let scriptNode;
+
+        startButton.addEventListener('click', async () => {
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            try {
+                // Get microphone access from the user
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // Create a source node from the microphone stream
+                micSource = audioContext.createMediaStreamSource(stream);
+
+                // Create a ScriptProcessorNode to process the audio
+                const bufferSize = 4096; // Number of samples to process at a time
+                scriptNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
+                micSource.connect(scriptNode);
+
+                // Connect the processor node to the audio context (required)
+                scriptNode.connect(audioContext.destination);
+
+                // Initialize the pitch finder
+                const pitchFinder = new PitchFinder.YIN({ sampleRate: audioContext.sampleRate });
+
+                // Define what happens when the processor node gets new audio data
+                scriptNode.onaudioprocess = (audioEvent) => {
+                    // Get the audio data from the first channel
+                    const inputBuffer = audioEvent.inputBuffer.getChannelData(0);
+
+                    // Find the pitch in the audio data
+                    const pitch = pitchFinder(inputBuffer);
+
+                    // Display the pitch if one was found
+                    if (pitch) {
+                        pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
+                    } else {
+                        pitchDisplay.textContent = 'No pitch detected';
+                    }
+                };
+
+                // Update the UI
+                statusMessage.textContent = 'Listening...';
+                startButton.disabled = true;
+
+            } catch (err) {
+                console.error('Error accessing the microphone:', err);
+                statusMessage.textContent = 'Error: could not access microphone. Check your browser permissions.';
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+<!--
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- http://getbootstrap.com/docs/5.3/ -->
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 
   <title>Real-Time Pitch Detection</title>
   <link href="style.css" rel='stylesheet'>
@@ -24,3 +160,4 @@
   <script src="script.js"></script>
 </body>
 </html>
+-->

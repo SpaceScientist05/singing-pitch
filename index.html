@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Easy Pitch Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/pitchfinder@2.3.2/dist/pitchfinder.js"></script>
     <style>
         body { font-family: sans-serif; text-align: center; margin-top: 50px; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
@@ -17,62 +18,6 @@
     <p id="pitchDisplay">--</p>
 
     <script>
-        // --- STEP 1: INCLUDE PITCHFINDER.JS LIBRARY ---
-        // This is the core logic for finding the pitch.
-        // It is copied and pasted here for simplicity.
-        (function (global, factory) {
-            typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-            typeof define === 'function' && define.amd ? define(factory) :
-            (global = global || self, global.PitchFinder = factory());
-        }(this, (function () { 'use strict';
-
-            var yin = (function () {
-                var defaults = {
-                    sampleRate: 44100,
-                    threshold: 0.1,
-                };
-                return function (audioBuffer, options) {
-                    options = Object.assign({}, defaults, options);
-                    var tau, t, i, j, period,
-                        size = audioBuffer.length,
-                        yinBuffer = new Float32Array(Math.floor(size / 2)),
-                        delta = 0,
-                        pitch;
-                    for (t = 0; t < yinBuffer.length; t++) {
-                        yinBuffer[t] = 0;
-                    }
-                    for (t = 1; t < yinBuffer.length; t++) {
-                        for (i = 0; i < size - t; i++) {
-                            delta += (audioBuffer[i] - audioBuffer[i + t]) * (audioBuffer[i] - audioBuffer[i + t]);
-                        }
-                        yinBuffer[t] = delta;
-                        delta = 0;
-                    }
-                    yinBuffer[0] = 1;
-                    t = 1;
-                    while (t < yinBuffer.length && yinBuffer[t] < options.threshold) {
-                        t++;
-                    }
-                    if (t === yinBuffer.length) {
-                        return null;
-                    }
-                    i = t + 1;
-                    while (i < yinBuffer.length && yinBuffer[i] < yinBuffer[t]) {
-                        i++;
-                    }
-                    tau = t + ((yinBuffer[t] - yinBuffer[i]) / (2 * (yinBuffer[t] - yinBuffer[i]) + yinBuffer[i]));
-                    pitch = options.sampleRate / tau;
-                    return pitch;
-                };
-            })();
-
-            var PitchFinder = {
-                YIN: yin
-            };
-            return PitchFinder;
-        })));
-
-        // --- STEP 2: SET UP THE MAIN APPLICATION LOGIC ---
         // This is the main part of your application.
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const startButton = document.getElementById('startButton');

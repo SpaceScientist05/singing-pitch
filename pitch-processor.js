@@ -1,4 +1,4 @@
-// pitch-processor.js
+// Used helped from Gemini and GPT to include Pitchfinder code directly in this project, as I could not obtain a functional cdn link to the Pitchfinder repo.
 
 // Simple, correct YIN detector factory for use inside an AudioWorklet
 const PitchFinder = {

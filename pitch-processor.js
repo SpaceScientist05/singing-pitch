@@ -78,7 +78,7 @@ class PitchProcessor extends AudioWorkletProcessor {
     this._buffer = new Float32Array(0);
 
     // Create a detector instance using the worklet's sampleRate
-    this._detector = PitchFinder.YIN({ sampleRate: sampleRate, threshold: 0.12 });
+    this._detector = PitchFinder.YIN({ sampleRate: sampleRate, threshold: 0.16 });
 
     // throttle messaging to the main thread (ms)
     this._throttleMs = 80;

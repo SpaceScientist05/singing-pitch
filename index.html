@@ -15,12 +15,41 @@
     <button id="startButton">Start Microphone</button>
     <p class="status">Waiting for microphone...</p>
     <p id="pitchDisplay">--</p>
+    <p id="noteDisplay">--</p>
 
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const startButton = document.getElementById('startButton');
         const pitchDisplay = document.getElementById('pitchDisplay');
+        const noteDisplay = document.getElementById('noteDisplay');
         const statusMessage = document.querySelector('.status');
+
+
+        // Converting frequency to note:
+        function pitchtonote(freq){
+            if (freq != null && freq <= 0)
+            {
+                const A4 = 440;
+                const notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+                const midi = Math.round(69 + 12 * Math.log2(freq / A4)); //Convert freq to midi number
+                const pitchclass = ((midi % 12) + 12) % 12; //Note (C being 1, B being 12)
+                let note = notes[pitchclass] + (Math.floor(midi / 12) - 1); //Convert midi number to note and octave
+                
+                //No point showing cents - just show '+' or '-' if the voice is slightly above or below the note shown
+                const exactFreq = A4 * Math.pow(2, (midi - 69) / 12);
+                if (freq > exactFreq + 0.5) note += '+';
+                else if (freq < exactFreq - 0.5) note += '-';
+
+                return `${note}`;
+            }
+            else
+            {
+                return null;
+            }
+        }
+            
+
+
 
         startButton.addEventListener('click', async () => {
             if (audioContext.state === 'suspended') {
@@ -47,13 +76,14 @@
                     const pitch = event.data;
                     if (pitch) {
                         pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
+                        noteDisplay.textContent = pitchtonote(pitch);
+
                     } else {
                         pitchDisplay.textContent = 'No pitch detected';
+                        noteDisplay.textContent = '--';
                     }
                 };
 
-                // It's a good practice to connect the worklet to the destination,
-                // even if you don't intend to play the output.
                 audioWorkletNode.connect(audioContext.destination);
 
                 statusMessage.textContent = 'Listening...';

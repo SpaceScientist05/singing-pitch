@@ -6,9 +6,11 @@
     <style>
         body { font-family: sans-serif; text-align: center; margin-top: 50px; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        canvas { width: 100% !important; height: 300px !important; }
         #pitchDisplay, #noteDisplay { font-size: 2em; margin-top: 20px; }
         .status { color: gray; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <h1>Real-time Pitch Detector</h1>
@@ -16,6 +18,10 @@
     <p class="status">Waiting for microphone...</p>
     <p id="pitchDisplay">--</p>
     <p id="noteDisplay">--</p>
+    <div id="container">
+        <canvas id="pitchChart"></canvas>
+        <div class="status" id="status">Waiting for incoming pitch frames...</div>
+    </div>
 
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -48,8 +54,145 @@
             }
         }
             
+        /***** CONFIG *****/
+        const WINDOW_MS = 10_000;          // show last 10 seconds
+        const MAX_POINTS = 1000;           // safety cap (avoid memory growth)
+        const maxUpdateRateHz = 25;        // throttle chart updates (Hz)
+
+        /***** SMALL SMOOTHER (exponential) *****/
+        function createExpSmoother(alpha) {
+            let s = null;
+            return {
+            process: function(raw) {
+                if (raw == null || !isFinite(raw) || raw <= 0) return null;
+                if (s == null) { s = raw; return s; }
+                s = alpha * raw + (1 - alpha) * s;
+                return s;
+            },
+            reset: function() { s = null; }
+            };
+        }
+        const smoother = createExpSmoother(0.35); // medium smoothing good for singing
+
+        /***** HELPER: tiny function to pretty-format time on axis *****/
+        function formatTimeTick(ms) {
+            const d = new Date(ms);
+            const mm = String(d.getMinutes()).padStart(2,'0');
+            const ss = String(d.getSeconds()).padStart(2,'0');
+            const ms2 = String(Math.floor(d.getMilliseconds()/10)).padStart(2,'0'); // centiseconds
+            return `${mm}:${ss}.${ms2}`; // e.g. "03:12.45"
+        }
+
+        /***** CHART.JS SETUP: scatter plot with linear x-axis (ms) *****/
+        const ctx = document.getElementById('pitchChart').getContext('2d');
+
+        // initial empty dataset
+        const dataPoints = [];
+
+        const chart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+            datasets: [{
+                label: 'Pitch (Hz)',
+                data: dataPoints,        // array of {x: ms, y: freq}
+                showLine: true,
+                tension: 0.25,
+                pointRadius: 2,
+                borderWidth: 2,
+                spanGaps: true
+            }]
+            },
+            options: {
+            animation: false,
+            normalized: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                type: 'linear',
+                title: { display: true, text: 'Time (latest → right)' },
+                ticks: {
+                    callback: function(value) {
+                    // value is ms epoch; format nicely
+                    return formatTimeTick(value);
+                    },
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: 8
+                },
+                // we will set min/max programmatically each update
+                },
+                y: {
+                title: { display: true, text: 'Frequency (Hz)' },
+                suggestedMin: 60,    // common singing lower bound
+                suggestedMax: 1200   // cover most voices and upper harmonics
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                callbacks: {
+                    label: function(context) {
+                    const y = context.parsed.y;
+                    const ms = context.parsed.x;
+                    return `${y.toFixed(2)} Hz — ${formatTimeTick(ms)}`;
+                    }
+                }
+                }
+            }
+            }
+        });
 
 
+        /***** INCOMING FREQUENCY HANDLER *****
+         * Call handleIncomingFreq(rawHz) whenever you receive a new pitch frame
+         * (e.g. inside audioWorkletNode.port.onmessage).
+         *
+         * This function:
+         *  - smooths the freq,
+         *  - pushes a new {x:ts, y:freq} point,
+         *  - prunes points older than WINDOW_MS,
+         *  - throttles chart updates to maxUpdateRateHz.
+         */
+        let lastUpdateTime = 0;
+        function handleIncomingFreq(rawHz) {
+            const now = Date.now();
+
+            // keep status text
+            document.getElementById('status').textContent = 'Receiving pitch frames...';
+
+            // 1) smooth / sanitize
+            const smoothed = smoother.process(rawHz);
+
+            // if no pitch (null) we can either push a point with null y (gap) or skip;
+            // here we skip (so gaps aren't plotted). If you want gaps, push {x:now, y:null}
+            if (smoothed == null) {
+            // optionally: push a null to show gap: dataPoints.push({x: now, y: null});
+            // but for singing we generally only show vowels => skip nulls
+            } else {
+            // 2) add point
+            dataPoints.push({ x: now, y: smoothed });
+
+            // 3) prune older than WINDOW_MS
+            const cutoff = now - WINDOW_MS;
+            while (dataPoints.length && dataPoints[0].x < cutoff) {
+                dataPoints.shift();
+            }
+            // safety cap
+            if (dataPoints.length > MAX_POINTS) dataPoints.splice(0, dataPoints.length - MAX_POINTS);
+            }
+
+            // 4) throttle chart updates
+            const minIntervalMs = 1000 / maxUpdateRateHz;
+            if (now - lastUpdateTime > minIntervalMs) {
+            // set visible window on x-axis: [now - WINDOW_MS, now]
+            chart.options.scales.x.min = now - WINDOW_MS;
+            chart.options.scales.x.max = now;
+
+            // update without animation for responsiveness
+            chart.update('none');
+            lastUpdateTime = now;
+            }
+        }
 
         startButton.addEventListener('click', async () => {
             if (audioContext.state === 'suspended') {
@@ -74,6 +217,7 @@
                 // Listen for messages from the AudioWorkletProcessor
                 audioWorkletNode.port.onmessage = (event) => {
                     const pitch = event.data;
+                    
                     if (pitch) {
                         pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
                         noteDisplay.textContent = `${pitchtonote(pitch)}`;
@@ -82,6 +226,7 @@
                         pitchDisplay.textContent = 'No pitch detected';
                         noteDisplay.textContent = '--';
                     }
+                    handleIncomingFreq(rawFreq);
                 };
 
                 audioWorkletNode.connect(audioContext.destination);

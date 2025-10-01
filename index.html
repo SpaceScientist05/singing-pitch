@@ -226,7 +226,7 @@
                         pitchDisplay.textContent = 'No pitch detected';
                         noteDisplay.textContent = '--';
                     }
-                    handleIncomingFreq(rawFreq);
+                    handleIncomingFreq(pitch);
                 };
 
                 audioWorkletNode.connect(audioContext.destination);
